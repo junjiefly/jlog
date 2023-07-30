@@ -1,2 +1,2 @@
 # jlog
-glog style log tool with compression and rotation
+a logging tool similar to glog style, inherits log compression and rollback functionalities
