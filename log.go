@@ -90,3 +90,16 @@ func Shutdown() {
 		loggers[k].close()
 	}
 }
+
+
+func SetLogLevel(level int) {
+	old := logLevel
+	if level < 0 {
+		logLevel = 0
+	} else if level > 4 {
+		logLevel = 4
+	} else {
+		logLevel = int64(level)
+	}
+	V(logLevel).Infoln("log level changes from", old, "to", logLevel)
+}
