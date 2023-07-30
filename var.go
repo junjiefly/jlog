@@ -37,6 +37,6 @@ var (
 	lineBreak    = byte('\n')
 )
 
-var maxBufSize = 2048
-
+var maxBufSize = 4096
+var mb = 1024 * 1024
 var gzSuffix = ".gz"
