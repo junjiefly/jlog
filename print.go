@@ -43,7 +43,7 @@ func (log *iLog) create() {
 var timeNow = time.Now
 
 func (log *iLog) rotate() {
-	if log.size >= logSize*1024*1024 {
+	if log.size >= logSize*mb {
 		log.file.Close()
 		newName := filepath.Join(logDir, processName+severityName[log.severity]+".temp")
 		oldName := filepath.Join(logDir, processName+severityName[log.severity])
