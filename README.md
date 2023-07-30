@@ -1,5 +1,5 @@
 # jlog
-    a logging tool similar to glog style, inherits log compression and rollback functionalities
+    a logging tool similar to glog style, integrates log compression and rollback functionalities
 
 ## eg:
 
