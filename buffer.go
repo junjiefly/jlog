@@ -38,7 +38,7 @@ var bufferPool sync.Pool
 func newBuffer() *buffer {
 	var fb = bufferPool.Get().(*buffer)
 	fb.allocate()
-	fmt.Println("Cap:", cap(fb.buf), "len:", len(fb.buf))
+	//fmt.Println("Cap:", cap(fb.buf), "len:", len(fb.buf))
 	atomic.AddInt64(&bufTotal, 1)
 	return fb
 }
