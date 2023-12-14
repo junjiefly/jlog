@@ -2,7 +2,6 @@ package jlog
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
