@@ -2,6 +2,7 @@ package jlog
 
 import (
 	"flag"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -17,7 +18,8 @@ func init() {
 	flag.IntVar(&logCfg.maxBackups, "logBackups", 10, "maximum number of backup log files")
 	flag.IntVar(&logCfg.maxAge, "logAge", 0, "maximum number of days to retain old log files")
 	flag.BoolVar(&logCfg.compress, "logCompress", true, "if the rotated log files should be compressed")
-	flag.BoolVar(&logCfg.consoleOut, "logConsole", false, "if output log to console")
+	flag.BoolVar(&logCfg.consoleOut, "logConsole", false, "if write log to console")
+	flag.BoolVar(&logCfg.localWrite, "logLocalWrite", true, "if write local log files")
 	checkDir()
 	loggers = []iLog{
 		infoLog:    newLogger(infoLog),
@@ -170,6 +172,10 @@ func SetLogLevel(level int) {
 		logCfg.logLevel = int64(level)
 	}
 	V(logCfg.logLevel).Infoln("log level changes from", old, "to", logCfg.logLevel)
+}
+
+func SetOutout(writers ...io.Writer) {
+	logCfg.writers = writers
 }
 
 func Flush() {

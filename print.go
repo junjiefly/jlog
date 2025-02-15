@@ -3,6 +3,7 @@ package jlog
 import (
 	"fmt"
 	lumberjack "github.com/junjiefly/lumberjack"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -15,6 +16,7 @@ type syncWriter interface {
 	Write([]byte) (int, error)
 	Flush() error
 	Close() error
+	SetOutput(localWrite bool, writers []io.Writer)
 }
 
 type iLog struct {
@@ -28,14 +30,19 @@ func newLogger(s severity) iLog {
 }
 
 func (log *iLog) create() {
-	log.Writer = &lumberjack.Logger{
+	logger := &lumberjack.Logger{
 		Filename:   logCfg.logDir + "/" + logCfg.fileName + severityName[log.severity],
 		MaxSize:    logCfg.maxSize * mb,
 		MaxBackups: logCfg.maxBackups,
 		MaxAge:     logCfg.maxAge,
 		Compress:   logCfg.compress,
-		Console:    logCfg.consoleOut,
 	}
+	writers := logCfg.writers
+	if logCfg.consoleOut {
+		writers = append(writers, os.Stdout)
+	}
+	logger.SetOutput(logCfg.localWrite, writers)
+	log.Writer = logger
 }
 
 func (log *iLog) write(p []byte) (n int, err error) {
@@ -159,7 +166,6 @@ func (log *iLog) close() {
 
 type decision bool
 
-
 // stacks is a wrapper for runtime.Stack that attempts to recover the data for all goroutines.
 func stacks(all bool) []byte {
 	// We don't know how big the traces are, so grow a few times if they don't fit. Start large, though.
@@ -179,7 +185,6 @@ func stacks(all bool) []byte {
 	return trace
 }
 
-
 func checkDir() {
 	_, err := os.Stat(logCfg.logDir)
 	if err != nil {
@@ -192,7 +197,6 @@ func checkDir() {
 	}
 	return
 }
-
 
 func flushThread() {
 	if logCfg.flushInterval < 0 {

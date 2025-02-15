@@ -1,6 +1,7 @@
 package jlog
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -21,6 +22,9 @@ type config struct {
 	maxAge        int
 	compress      bool
 	consoleOut    bool
+	localWrite    bool
+
+	writers  []io.Writer
 }
 
 type severity int32
