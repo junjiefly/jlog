@@ -5,7 +5,7 @@
     * You only need to import the package to run directly immediately.
     Try it now!
 
-#Bench
+# Bench
 ```go
     import (
         "fmt"
@@ -65,7 +65,7 @@
     ps: test does contains rotate or compress costs.   
 ```
 
-#Example
+# Example
 
 ```go
     package main
