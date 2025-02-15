@@ -2,9 +2,8 @@ package jlog
 
 import (
 	"fmt"
-	"net/http"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -12,11 +11,16 @@ import (
 	"unsafe"
 )
 
+type syncWriter interface {
+	Write([]byte) (int, error)
+	Flush() error
+	Close() error
+}
+
 type iLog struct {
 	severity
-	size int
 	sync.RWMutex
-	file *os.File
+	Writer syncWriter
 }
 
 func newLogger(s severity) iLog {
@@ -24,46 +28,26 @@ func newLogger(s severity) iLog {
 }
 
 func (log *iLog) create() {
-	path := filepath.Join(logDir, processName+severityName[log.severity])
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-	var size int64 = 0
-	if err != nil {
-		os.Exit(2)
-	} else {
-		file.WriteString("open log file at " + time.Now().Local().Format("2006-01-02 15:04:05.000")[:23] + "\n")
-		fi, _ := file.Stat()
-		if fi != nil {
-			size = fi.Size()
-		}
+	log.Writer = &lumberjack.Logger{
+		Filename:   logCfg.logDir + "/" + logCfg.fileName + severityName[log.severity],
+		MaxSize:    logCfg.maxSize * mb,
+		MaxBackups: logCfg.maxBackups,
+		MaxAge:     logCfg.maxAge,
+		Compress:   logCfg.compress,
+		Console:    logCfg.consoleOut,
 	}
-	log.file = file
-	log.size = int(size)
+}
+
+func (log *iLog) write(p []byte) (n int, err error) {
+	n, err = log.Writer.Write(p)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: log can't be done because of error: %s\n", err)
+		log.flush()
+	}
+	return
 }
 
 var timeNow = time.Now
-
-func (log *iLog) rotate() {
-	if log.size >= logSize*mb {
-		log.file.Close()
-		newName := filepath.Join(logDir, processName+severityName[log.severity]+".temp")
-		oldName := filepath.Join(logDir, processName+severityName[log.severity])
-		_ = os.Rename(oldName, newName)
-
-		var size int64 = 0
-		file, err := os.OpenFile(oldName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-		if err != nil {
-			os.Exit(2)
-		} else {
-			fi, _ := file.Stat()
-			if fi != nil {
-				size = fi.Size()
-			}
-		}
-		log.size = int(size)
-		log.file = file
-		rotateChan <- log.severity
-	}
-}
 
 func (log *iLog) header() *buffer {
 	_, file, line, ok := runtime.Caller(3)
@@ -118,7 +102,7 @@ func (log *iLog) formatHeader(file string, line int) *buffer {
 		line = 0 // not a real line number, but acceptable to someDigits
 	}
 	fb := newBuffer()
-	fb.Write(str2bytes(now.Local().Format("2006-01-02 15:04:05.000")[:23]))
+	fb.Write(str2bytes(timeFormater(now)))
 	fb.writeByte(space)
 	fb.writeByte(leftBracket)
 	fb.writeByte(severityChar[log.severity])
@@ -133,12 +117,10 @@ func (log *iLog) formatHeader(file string, line int) *buffer {
 
 func (log *iLog) output(buf []byte) {
 	log.Lock()
-	if log.file == nil {
+	if log.Writer == nil {
 		log.create()
 	}
-	ret, _ := log.file.Write(buf)
-	log.size += ret
-	log.rotate()
+	_, _ = log.write(buf)
 	log.Unlock()
 }
 
@@ -161,127 +143,22 @@ func (log *iLog) flush() {
 		return
 	}
 	log.Lock()
-	if log.file != nil {
-		log.file.Sync()
+	if log.Writer != nil {
+		log.Writer.Flush()
 	}
 	log.Unlock()
 }
 
 func (log *iLog) close() {
 	log.Lock()
-	if log.file != nil {
-		log.file.Close()
+	if log.Writer != nil {
+		log.Writer.Close()
 	}
 	log.Unlock()
 }
 
-var loggers []iLog
-
 type decision bool
 
-func V(level int64) decision {
-	if level > logLevel {
-		return false
-	}
-	return true
-}
-
-func (d decision) Infoln(args ...interface{}) {
-	if d {
-		loggers[infoLog].println(args...)
-	}
-}
-
-func (d decision) Infof(format string, args ...interface{}) {
-	if d {
-		loggers[infoLog].printf(format, args...)
-	}
-}
-func (d decision) Warningln(args ...interface{}) {
-	if d {
-		loggers[warningLog].println(args...)
-	}
-}
-
-func (d decision) Warningf(format string, args ...interface{}) {
-	if d {
-		loggers[warningLog].printf(format, args...)
-	}
-}
-
-func (d decision) Errorln(args ...interface{}) {
-	if d {
-		loggers[errorLog].println(args...)
-	}
-}
-
-func (d decision) Errorf(format string, args ...interface{}) {
-	if d {
-		loggers[errorLog].printf(format, args...)
-	}
-}
-
-func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spitTime string, size int64, errMsg error) {
-	remoteAddr := r.RemoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx >= 0 {
-		remoteAddr = remoteAddr[:idx]
-	}
-	now := timeNow()
-	cost := (now.UnixNano() - startTime) / 1e6
-	fb := newBuffer()
-
-	fb.Write(str2bytes(now.Local().Format("2006-01-02 15:04:05.000")[:23]))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(remoteAddr))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(host))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(reqId))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(r.Method))
-	fb.writeByte(space)
-
-	someDigits(fb, retCode)
-	fb.writeByte(space)
-
-	someDigits(fb, int(size))
-	fb.writeByte(space)
-
-	someDigits(fb, int(cost))
-	fb.Write(str2bytes("ms"))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(r.RequestURI))
-	fb.writeByte(space)
-
-	if spitTime == "" {
-		fb.writeByte(split)
-	} else {
-		fb.Write(str2bytes(spitTime))
-	}
-	fb.writeByte(space)
-
-	if errMsg == nil {
-		fb.writeByte(split)
-	} else {
-		fb.Write(str2bytes(errMsg.Error()))
-	}
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(r.Proto))
-	fb.writeByte(space)
-
-	fb.Write(str2bytes(r.UserAgent()))
-	fb.writeByte(space)
-
-	fb.writeByte(lineBreak)
-	loggers[webLog].output(fb.bytes())
-	freeBuffer(fb)
-}
 
 // stacks is a wrapper for runtime.Stack that attempts to recover the data for all goroutines.
 func stacks(all bool) []byte {
@@ -302,20 +179,33 @@ func stacks(all bool) []byte {
 	return trace
 }
 
-func Fatalln(args ...interface{}) {
-	loggers[fatalLog].println(args...)
-	trace := stacks(true)
-	loggers[fatalLog].file.Write(trace)
-	loggers[fatalLog].flush()
-	Shutdown()
-	os.Exit(255)
+
+func checkDir() {
+	_, err := os.Stat(logCfg.logDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(logCfg.logDir, os.ModePerm)
+			if err == nil {
+				return
+			}
+		}
+	}
+	return
 }
 
-func Fatalf(format string, args ...interface{}) {
-	loggers[fatalLog].printf(format, args...)
-	trace := stacks(true)
-	loggers[fatalLog].file.Write(trace)
-	loggers[fatalLog].flush()
-	Shutdown()
-	os.Exit(255)
+
+func flushThread() {
+	if logCfg.flushInterval < 0 {
+		logCfg.flushInterval = 30
+	}
+	duration := time.Duration(logCfg.flushInterval) * time.Second
+	c := time.NewTicker(duration)
+	defer c.Stop()
+	for {
+		c.Reset(duration)
+		select {
+		case <-c.C:
+			Flush()
+		}
+	}
 }
