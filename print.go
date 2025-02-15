@@ -2,7 +2,7 @@ package jlog
 
 import (
 	"fmt"
-	lumberjack "github.com/junjiefly/lumberjack.v2"
+	lumberjack "github.com/junjiefly/lumberjack"
 	"os"
 	"runtime"
 	"strings"
