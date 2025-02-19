@@ -75,6 +75,44 @@ func (d decision) Errorf(format string, args ...interface{}) {
 	}
 }
 
+
+
+func newLogEntry(loglevel severity) *entry {
+	e := newEntry()
+	e.s = loglevel
+	e.buf = newBuffer()
+	e.buf.writeByte('{')
+	e = e.time(time.Now())
+	e.buf.writeByte(',')
+	e = e.level(severityType[loglevel])
+	return e
+}
+
+func (d decision) Warnings() *entry {
+	if d {
+		return newLogEntry(warningLog)
+	}
+	return nil
+}
+
+func (d decision) Infos() *entry {
+	if d {
+		return newLogEntry(infoLog)
+	}
+	return nil
+}
+
+func Infos() *entry {
+	return newLogEntry(infoLog)
+}
+
+func (d decision) Errors() *entry {
+	if d {
+		return newLogEntry(errorLog)
+	}
+	return nil
+}
+
 func Fatalln(args ...interface{}) {
 	loggers[fatalLog].println(args...)
 	trace := stacks(true)
@@ -92,7 +130,6 @@ func Fatalf(format string, args ...interface{}) {
 	Shutdown()
 	os.Exit(255)
 }
-
 
 func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spitTime string, size int64, errMsg error) {
 	remoteAddr := r.RemoteAddr
@@ -156,10 +193,8 @@ func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spi
 	freeBuffer(fb)
 }
 
-func TimeFormat(format string){
-	timeFormater = func(t time.Time) string {
-		return t.Local().Format(format)
-	}
+func TimeFormat(format string) {
+	timeFormat(format)
 }
 
 func SetLogLevel(level int) {

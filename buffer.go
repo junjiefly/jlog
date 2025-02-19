@@ -14,29 +14,37 @@ type buffer struct {
 	woff int    //how many bytes have been sended to other user
 }
 
-var memTotal int64
 var bufTotal int64
-var memPool *sync.Pool
 
-func allocate() []byte {
-	slab := *memPool.Get().(*[]byte)
-	atomic.AddInt64(&memTotal, 1)
-	return slab[:maxBufSize]
-}
+var entryTotal int64
 
-func free(buf []byte) {
-	memPool.Put(&buf)
-	atomic.AddInt64(&memTotal, -1)
-}
-func stats() (int64, int64) {
-	return atomic.LoadInt64(&memTotal), atomic.LoadInt64(&bufTotal)
+func stats() int64 {
+	return  atomic.LoadInt64(&bufTotal)
 }
 
 var bufferPool sync.Pool
 
+var entryPool sync.Pool
+
+func newEntry()*entry{
+	var e = entryPool.Get().(*entry)
+	atomic.AddInt64(&entryTotal, 1)
+	return e
+}
+
+func freeEntry(e *entry) {
+	if e == nil {
+		return
+	}
+	if e.buf != nil {
+		freeBuffer(e.buf)
+	}
+	entryPool.Put(e)
+	atomic.AddInt64(&entryTotal, -1)
+}
+
 func newBuffer() *buffer {
 	var fb = bufferPool.Get().(*buffer)
-	fb.allocate()
 	//fmt.Println("Cap:", cap(fb.buf), "len:", len(fb.buf))
 	atomic.AddInt64(&bufTotal, 1)
 	return fb
@@ -46,42 +54,29 @@ func freeBuffer(fb *buffer) {
 	if fb == nil {
 		return
 	}
-	fb.free()
+	fb.reset()
 	bufferPool.Put(fb)
 	atomic.AddInt64(&bufTotal, -1)
 }
 
 func init() {
-	memPool = &sync.Pool{
-		New: func() interface{} {
-			buffer := make([]byte, maxBufSize)
-			return &buffer
-		},
-	}
 	bufferPool = sync.Pool{
 		New: func() interface{} {
-			return new(buffer)
+			return &buffer{
+				buf:  make([]byte,maxBufSize),
+			}
 		},
 	}
-}
-
-func (fb *buffer) allocate() {
-	fb.buf = allocate()
+	entryPool = sync.Pool{
+		New: func() interface{} {
+			return new(entry)
+		},
+	}
 }
 
 func (fb *buffer) reset() {
-	if fb.buf != nil {
-		fb.buf = fb.buf[:0]
-	}
 	fb.roff = 0
 	fb.woff = 0
-}
-
-func (fb *buffer) free() {
-	fb.reset()
-	if fb.buf != nil {
-		free(fb.buf)
-	}
 }
 
 func (fb *buffer) Write(buf []byte) (n int, err error) {

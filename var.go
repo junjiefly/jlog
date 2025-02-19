@@ -8,7 +8,8 @@ import (
 )
 
 var TimeISO8601 = "2006-01-02T15:04:05.000Z0700"
-var TimeDefault = "2006-01-02T15:04:05.000"
+var TimeRFC3339 = time.RFC3339
+var TimeRFC3339Nano = time.RFC3339Nano
 
 var loggers []iLog
 
@@ -24,7 +25,7 @@ type config struct {
 	consoleOut    bool
 	localWrite    bool
 
-	writers  []io.Writer
+	writers []io.Writer
 }
 
 type severity int32
@@ -46,6 +47,13 @@ var severityName = []string{
 	webLog:     ".http",
 }
 
+var severityType = []string{
+	infoLog:    "info",
+	warningLog: "warn",
+	errorLog:   "error",
+	fatalLog:   "fatal",
+}
+
 var (
 	severityChar = []byte("IWEF")
 	split        = byte('-')
@@ -57,13 +65,21 @@ var (
 )
 
 const mb = 1024 * 1024
+
 var maxBufSize = mb
 
 var logCfg config
 var program = filepath.Base(os.Args[0])
 
-var timeFormater = timeFormat
+var timeFormater = timeFormatDefault
 
-func timeFormat(t time.Time) string {
-	return t.Local().Format(TimeDefault)
+func timeFormat(format string) {
+	timeFormater = func(buf []byte, t time.Time) []byte {
+		return t.AppendFormat(buf, format)
+	}
+}
+
+func timeFormatDefault(buf []byte, t time.Time) []byte {
+	buf = t.AppendFormat(buf, time.RFC3339Nano)
+	return buf[:len(buf)-12]
 }

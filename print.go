@@ -109,7 +109,13 @@ func (log *iLog) formatHeader(file string, line int) *buffer {
 		line = 0 // not a real line number, but acceptable to someDigits
 	}
 	fb := newBuffer()
-	fb.Write(str2bytes(timeFormater(now)))
+
+	buf := fb.bytes()
+	len1 := len(buf)
+	buf = timeFormater(buf, now)
+	lenth := len(buf) - len1
+	fb.roff += lenth
+
 	fb.writeByte(space)
 	fb.writeByte(leftBracket)
 	fb.writeByte(severityChar[log.severity])
