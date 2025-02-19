@@ -4,6 +4,14 @@
     * There is no need to worry about disk space, as it will automatically packs and compresses logs. 
     * You only need to import the package to run directly immediately.
     Try it now!
+# feature
+    * High Performance
+    * Structured Logging Support
+    * Multiple Output Destinations
+    * Simplified and Easy-to-use API
+    * Customizable Time Format
+    * Automatic otation & Compression
+    * Flexible Log Levels
 
 # Benchmark
 ```go
