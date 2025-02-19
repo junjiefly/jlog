@@ -5,7 +5,7 @@
     * You only need to import the package to run directly immediately.
     Try it now!
 
-# Bench
+# Benchmark
 ```go
     zap/log.go
     httpFileWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
@@ -21,12 +21,12 @@
     Size:          256 * 1024,     
     FlushInterval: 30 * time.Second, 
     }
-	
+
     var httpFileCore zapcore.Core
-	httpFileCore = zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(httpAsyncWriter), infoPriority)
+    httpFileCore = zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(httpAsyncWriter), infoPriority)
     httpLog = zap.New(zapcore.NewTee([]zapcore.Core{httpFileCore}...), zap.AddCaller(), zap.AddCallerSkip(1))
 
-	log_test.go
+    log_test.go
 	
     package main
     
@@ -139,7 +139,8 @@
         }
     }
 	
-	testResult:
+    test result:
+
     goos: linux
     goarch: amd64
     pkg: jlog
