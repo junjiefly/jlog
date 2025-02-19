@@ -34,6 +34,10 @@
     httpFileCore = zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(httpAsyncWriter), infoPriority)
     httpLog = zap.New(zapcore.NewTee([]zapcore.Core{httpFileCore}...), zap.AddCaller(), zap.AddCallerSkip(1))
 
+    func HttpInfo(msg string, fields ...zap.Field) {
+        httpLog.Info(msg, fields...)
+    }
+
     log_test.go
 	
     package main
@@ -79,7 +83,7 @@
         zero_unformat_sync_fileWriter_consoleWriter := zerolog.ConsoleWriter{
             Out:        zero_unformat_sync_fileWriter,
             TimeFormat: "2006-01-02 15:04:05",
-            NoColor:    true, // 禁用颜色输出（可选）
+            NoColor:    true, 
         }
         zeroLog_unformat_sync = zlog.Output(zero_unformat_sync_fileWriter_consoleWriter)
         zero_unformat_async_fileWriter, _ := os.Create("zero_unformat_async.log")
@@ -88,7 +92,7 @@
         zero_unformat_async_fileWriter_consoleWriter := zerolog.ConsoleWriter{
             Out:        w,
             TimeFormat: "2006-01-02 15:04:05",
-            NoColor:    true, // 禁用颜色输出（可选）
+            NoColor:    true, 
         }
         zeroLog_unformat_async = zlog.Output(zero_unformat_async_fileWriter_consoleWriter)
     
