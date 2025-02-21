@@ -109,14 +109,9 @@ func (log *iLog) formatHeader(file string, line int) *buffer {
 		line = 0 // not a real line number, but acceptable to someDigits
 	}
 	fb := newBuffer()
-
-	buf := fb.bytes()
-	len1 := len(buf)
-	buf = timeFormater(buf, now)
-	lenth := len(buf) - len1
-	fb.roff += lenth
-
+	fb.writeTime(now)
 	fb.writeByte(space)
+
 	fb.writeByte(leftBracket)
 	fb.writeByte(severityChar[log.severity])
 	fb.writeByte(space)
@@ -205,14 +200,14 @@ func checkDir() {
 }
 
 func flushThread() {
-	if logCfg.flushInterval < 0 {
+	time.Sleep(time.Millisecond*100)
+	if logCfg.flushInterval <= 0 {
 		logCfg.flushInterval = 30
 	}
 	duration := time.Duration(logCfg.flushInterval) * time.Second
 	c := time.NewTicker(duration)
 	defer c.Stop()
 	for {
-		c.Reset(duration)
 		select {
 		case <-c.C:
 			Flush()

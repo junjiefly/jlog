@@ -322,11 +322,7 @@ func (e *entry) time(val time.Time) *entry {
 		return nil
 	}
 	e.buf.Write(str2bytes(`"time":"`))
-	buf := e.buf.bytes()
-	len1 := len(buf)
-	buf = timeFormater(buf, val)
-	lenth := len(buf) - len1
-	e.buf.roff += lenth
+	e.buf.writeTime(val)
 	e.buf.writeByte('"')
 	return e
 }
@@ -342,12 +338,7 @@ func (e *entry) Time(key string, val time.Time) *entry {
 	e.buf.writeByte(':')
 	e.buf.writeByte('"')
 
-	buf := e.buf.bytes()
-	len1 := len(buf)
-	buf = timeFormater(buf, val)
-	lenth := len(buf) - len1
-	e.buf.roff += lenth
-
+	e.buf.writeTime(val)
 	e.buf.writeByte('"')
 	return e
 }
@@ -356,7 +347,7 @@ func (e *entry) ReqId(val string) *entry {
 	if e == nil {
 		return nil
 	}
-	e.buf.Write(str2bytes(`"reqId":"`))
+	e.buf.Write(str2bytes(`,"reqId":"`))
 	e.buf.Write(str2bytes(val))
 	e.buf.writeByte('"')
 	return e
@@ -366,7 +357,7 @@ func (e *entry) level(val string) *entry {
 	if e == nil {
 		return nil
 	}
-	e.buf.Write(str2bytes(`"level":"`))
+	e.buf.Write(str2bytes(`,"level":"`))
 	e.buf.Write(str2bytes(val))
 	e.buf.writeByte('"')
 	return e

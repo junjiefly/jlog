@@ -35,7 +35,7 @@ const (
 	warningLog
 	errorLog
 	fatalLog
-	webLog
+	httpLog
 	numSeverity = 5
 )
 
@@ -44,7 +44,7 @@ var severityName = []string{
 	warningLog: ".warn",
 	errorLog:   ".error",
 	fatalLog:   ".fatal",
-	webLog:     ".http",
+	httpLog:     ".http",
 }
 
 var severityType = []string{
@@ -52,6 +52,7 @@ var severityType = []string{
 	warningLog: "warn",
 	errorLog:   "error",
 	fatalLog:   "fatal",
+	httpLog:    "http",
 }
 
 var (

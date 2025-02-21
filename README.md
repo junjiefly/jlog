@@ -1,7 +1,7 @@
 # jlog
     * jlog is a log library developed to adapt to high concurrency scenarios. 
     * Pursuing extreme performance and concise configuration. 
-    * There is no need to worry about disk space, as it will automatically packs and compresses logs. 
+    * There is no need to worry about disk space, as it will automatically rotate and compress logs. 
     * You only need to import the package to run directly immediately.
     Try it now!
 # feature
@@ -10,7 +10,7 @@
     * Multiple Output Destinations
     * Simplified and Easy-to-use API
     * Customizable Time Format
-    * Automatic otation & Compression
+    * Automatic Rotation & Compression
     * Flexible Log Levels
 
 # Benchmark

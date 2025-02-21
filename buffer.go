@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 //Simplified from fastBuffer
@@ -122,6 +123,19 @@ func (fb *buffer) bytes() []byte {
 		return fb.buf[fb.woff:fb.roff]
 	}
 }
+
+
+func (fb *buffer) writeTime(t time.Time) {
+	if fb.buf == nil {
+		return
+	} 
+	buf := fb.bytes()
+	len1 := len(buf)
+	buf = timeFormater(buf, t)
+	lenth := len(buf) - len1
+	fb.roff += lenth
+}
+
 
 func (fb *buffer) resize(roff, woff int) error {
 	if fb.buf == nil {

@@ -10,8 +10,8 @@ import (
 )
 
 func init() {
-	flag.StringVar(&logCfg.logDir, "logDir", "./log", "log dir path")
-	flag.IntVar(&logCfg.flushInterval, "logFlushInterval", 30, "log flush interval[second]")
+	flag.StringVar(&logCfg.logDir, "logDir", "log", "log dir path")
+	flag.IntVar(&logCfg.flushInterval, "logFlushInterval", 5, "log flush interval[second]")
 	flag.StringVar(&logCfg.fileName, "logName", program, "log file name")
 	flag.Int64Var(&logCfg.logLevel, "logLevel", 0, "default log level")
 	flag.Int64Var(&logCfg.maxSize, "logSize", 1024, "max log file size[mb]")
@@ -26,7 +26,7 @@ func init() {
 		warningLog: newLogger(warningLog),
 		errorLog:   newLogger(errorLog),
 		fatalLog:   newLogger(fatalLog),
-		webLog:     newLogger(webLog),
+		httpLog:    newLogger(httpLog),
 	}
 	go func() {
 		flushThread()
@@ -75,16 +75,27 @@ func (d decision) Errorf(format string, args ...interface{}) {
 	}
 }
 
-
-
 func newLogEntry(loglevel severity) *entry {
 	e := newEntry()
 	e.s = loglevel
 	e.buf = newBuffer()
 	e.buf.writeByte('{')
 	e = e.time(time.Now())
-	e.buf.writeByte(',')
-	e = e.level(severityType[loglevel])
+	if loglevel != httpLog {
+		e = e.level(severityType[loglevel])
+	}
+	return e
+}
+
+func newLogEntryWithTime(loglevel severity, t time.Time) *entry {
+	e := newEntry()
+	e.s = loglevel
+	e.buf = newBuffer()
+	e.buf.writeByte('{')
+	e = e.time(t)
+	if loglevel != httpLog {
+		e = e.level(severityType[loglevel])
+	}
 	return e
 }
 
@@ -140,7 +151,7 @@ func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spi
 	cost := (now.UnixNano() - startTime) / 1e6
 	fb := newBuffer()
 
-	fb.Write(str2bytes(now.Local().Format("2006-01-02 15:04:05.000")[:23]))
+	fb.writeTime(now)
 	fb.writeByte(space)
 
 	fb.Write(str2bytes(remoteAddr))
@@ -189,8 +200,27 @@ func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spi
 	fb.writeByte(space)
 
 	fb.writeByte(lineBreak)
-	loggers[webLog].output(fb.bytes())
+	loggers[httpLog].output(fb.bytes())
 	freeBuffer(fb)
+}
+
+func Https(r *http.Request, reqId, host string, startTime int64, retCode int, spitTime string, size int64, errMsg error) {
+	remoteAddr := r.RemoteAddr
+	if idx := strings.LastIndex(remoteAddr, ":"); idx >= 0 {
+		remoteAddr = remoteAddr[:idx]
+	}
+	now := timeNow()
+	cost := (now.UnixNano() - startTime) / 1e6
+	e := newLogEntryWithTime(httpLog, now)
+
+	e = e.Str("remote", remoteAddr).Str("host", host).ReqId(reqId).Str("method", r.Method).Int("status", retCode)
+	e = e.Int64("size", size).Int64("cost", cost).Str("uri", r.RequestURI)
+	e = e.Str("split", spitTime).Str("proto", r.Proto).Str("ua", r.UserAgent())
+	if errMsg == nil {
+		e.Msg("")
+	} else {
+		e.Msg(errMsg.Error())
+	}
 }
 
 func TimeFormat(format string) {
