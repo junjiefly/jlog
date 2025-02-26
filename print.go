@@ -201,6 +201,7 @@ func checkDir() {
 
 func flushThread() {
 	time.Sleep(time.Millisecond*100)
+	checkDir()
 	if logCfg.flushInterval <= 0 {
 		logCfg.flushInterval = 30
 	}

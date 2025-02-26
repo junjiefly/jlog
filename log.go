@@ -20,7 +20,6 @@ func init() {
 	flag.BoolVar(&logCfg.compress, "logCompress", true, "if the rotated log files should be compressed")
 	flag.BoolVar(&logCfg.consoleOut, "logConsole", false, "if write log to console")
 	flag.BoolVar(&logCfg.localWrite, "logLocalWrite", true, "if write local log files")
-	checkDir()
 	loggers = []iLog{
 		infoLog:    newLogger(infoLog),
 		warningLog: newLogger(warningLog),
