@@ -30,6 +30,7 @@ func newLogger(s severity) iLog {
 }
 
 func (log *iLog) create() {
+	checkDir()
 	logger := &lumberjack.Logger{
 		Filename:   logCfg.logDir + "/" + logCfg.fileName + severityName[log.severity],
 		MaxSize:    logCfg.maxSize * mb,
@@ -201,7 +202,6 @@ func checkDir() {
 
 func flushThread() {
 	time.Sleep(time.Millisecond*100)
-	checkDir()
 	if logCfg.flushInterval <= 0 {
 		logCfg.flushInterval = 30
 	}
