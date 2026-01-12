@@ -9,17 +9,19 @@ import (
 	"time"
 )
 
+var Flags = flag.NewFlagSet("jlog", flag.ContinueOnError)
+
 func init() {
-	flag.StringVar(&logCfg.logDir, "logDir", "log", "log dir path")
-	flag.IntVar(&logCfg.flushInterval, "logFlushInterval", 5, "log flush interval[second]")
-	flag.StringVar(&logCfg.fileName, "logName", program, "log file name")
-	flag.Int64Var(&logCfg.logLevel, "logLevel", 0, "default log level")
-	flag.Int64Var(&logCfg.maxSize, "logSize", 1024, "max log file size[mb]")
-	flag.IntVar(&logCfg.maxBackups, "logBackups", 10, "maximum number of backup log files")
-	flag.IntVar(&logCfg.maxAge, "logAge", 0, "maximum number of days to retain old log files")
-	flag.BoolVar(&logCfg.compress, "logCompress", true, "if the rotated log files should be compressed")
-	flag.BoolVar(&logCfg.consoleOut, "logConsole", false, "if write log to console")
-	flag.BoolVar(&logCfg.localWrite, "logLocalWrite", true, "if write local log files")
+	Flags.StringVar(&logCfg.logDir, "logDir", "log", "log dir path")
+	Flags.IntVar(&logCfg.flushInterval, "logFlushInterval", 5, "log flush interval[second]")
+	Flags.StringVar(&logCfg.fileName, "logName", program, "log file name")
+	Flags.Int64Var(&logCfg.logLevel, "logLevel", 0, "default log level")
+	Flags.Int64Var(&logCfg.maxSize, "logSize", 100, "max log file size[mb]")
+	Flags.IntVar(&logCfg.maxBackups, "logBackups", 10, "maximum number of backup log files")
+	Flags.IntVar(&logCfg.maxAge, "logAge", 0, "maximum number of days to retain old log files")
+	Flags.BoolVar(&logCfg.compress, "logCompress", true, "if the rotated log files should be compressed")
+	Flags.BoolVar(&logCfg.consoleOut, "logConsole", false, "if write log to console")
+	Flags.BoolVar(&logCfg.localWrite, "logLocalWrite", true, "if write local log files")
 	loggers = []iLog{
 		infoLog:    newLogger(infoLog),
 		warningLog: newLogger(warningLog),
