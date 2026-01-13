@@ -1,7 +1,6 @@
 package jlog
 
 import (
-	"flag"
 	"io"
 	"net/http"
 	"os"
@@ -9,19 +8,7 @@ import (
 	"time"
 )
 
-var Flags = flag.NewFlagSet("jlog", flag.ContinueOnError)
-
 func init() {
-	Flags.StringVar(&logCfg.logDir, "logDir", "log", "log dir path")
-	Flags.IntVar(&logCfg.flushInterval, "logFlushInterval", 5, "log flush interval[second]")
-	Flags.StringVar(&logCfg.fileName, "logName", program, "log file name")
-	Flags.Int64Var(&logCfg.logLevel, "logLevel", 0, "default log level")
-	Flags.Int64Var(&logCfg.maxSize, "logSize", 100, "max log file size[mb]")
-	Flags.IntVar(&logCfg.maxBackups, "logBackups", 10, "maximum number of backup log files")
-	Flags.IntVar(&logCfg.maxAge, "logAge", 0, "maximum number of days to retain old log files")
-	Flags.BoolVar(&logCfg.compress, "logCompress", true, "if the rotated log files should be compressed")
-	Flags.BoolVar(&logCfg.consoleOut, "logConsole", false, "if write log to console")
-	Flags.BoolVar(&logCfg.localWrite, "logLocalWrite", true, "if write local log files")
 	loggers = []iLog{
 		infoLog:    newLogger(infoLog),
 		warningLog: newLogger(warningLog),
@@ -29,13 +16,46 @@ func init() {
 		fatalLog:   newLogger(fatalLog),
 		httpLog:    newLogger(httpLog),
 	}
+}
+
+func InitWithDefaultConfig() error {
+	logCfg = Config{
+		LogDir:        "log",
+		FlushInterval: 5,
+		FileName:      program,
+		LogLevel:      0,
+		MaxSize:       100,
+		MaxBackups:    10,
+		MaxAge:        0,
+		Compress:      true,
+		Stdout:    false,
+		LocalWrite:    true,
+	}
+	return nil
+}
+
+
+func InitWithConfig(cfg Config)  {
+	logCfg = Config{
+		LogDir:        cfg.LogDir,
+		FlushInterval: cfg.FlushInterval,
+		FileName:      cfg.FileName,
+		LogLevel:      cfg.LogLevel,
+		MaxSize:       cfg.MaxSize,
+		MaxBackups:    cfg.MaxBackups,
+		MaxAge:        cfg.MaxAge,
+		Compress:      cfg.Compress,
+		Stdout:    cfg.Stdout,
+		LocalWrite:    cfg.LocalWrite,
+	}
 	go func() {
 		flushThread()
 	}()
+	return
 }
 
 func V(level int64) decision {
-	if level > logCfg.logLevel {
+	if level > logCfg.LogLevel {
 		return false
 	}
 	return true
@@ -229,19 +249,19 @@ func TimeFormat(format string) {
 }
 
 func SetLogLevel(level int) {
-	old := logCfg.logLevel
+	old := logCfg.LogLevel
 	if level < 0 {
-		logCfg.logLevel = 0
+		logCfg.LogLevel = 0
 	} else if level > 4 {
-		logCfg.logLevel = 4
+		logCfg.LogLevel = 4
 	} else {
-		logCfg.logLevel = int64(level)
+		logCfg.LogLevel = int64(level)
 	}
-	V(logCfg.logLevel).Infoln("log level changes from", old, "to", logCfg.logLevel)
+	V(logCfg.LogLevel).Infoln("log level changes from", old, "to", logCfg.LogLevel)
 }
 
 func SetOutout(writers ...io.Writer) {
-	logCfg.writers = writers
+	logCfg.Writers = writers
 }
 
 func Flush() {
@@ -251,7 +271,7 @@ func Flush() {
 }
 
 func Shutdown() {
-	V(logCfg.logLevel).Infoln("shutting down ...")
+	V(logCfg.LogLevel).Infoln("shutting down ...")
 	for k := range loggers {
 		loggers[k].flush()
 		loggers[k].close()

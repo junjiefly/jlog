@@ -13,19 +13,19 @@ var TimeRFC3339Nano = time.RFC3339Nano
 
 var loggers []iLog
 
-type config struct {
-	logDir        string
-	flushInterval int
-	logLevel      int64
-	fileName      string
-	maxSize       int64
-	maxBackups    int
-	maxAge        int
-	compress      bool
-	consoleOut    bool
-	localWrite    bool
+type Config struct {
+	LogDir        string
+	FlushInterval int
+	LogLevel int64
+	FileName   string
+	MaxSize    int64
+	MaxBackups int
+	MaxAge     int
+	Compress   bool
+	Stdout     bool
+	LocalWrite bool
 
-	writers []io.Writer
+	Writers []io.Writer
 }
 
 type severity int32
@@ -69,7 +69,7 @@ const mb = 1024 * 1024
 
 var maxBufSize = mb
 
-var logCfg config
+var logCfg Config
 var program = filepath.Base(os.Args[0])
 
 var timeFormater = timeFormatDefault

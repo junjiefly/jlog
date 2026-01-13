@@ -32,17 +32,17 @@ func newLogger(s severity) iLog {
 func (log *iLog) create() {
 	checkDir()
 	logger := &lumberjack.Logger{
-		Filename:   logCfg.logDir + "/" + logCfg.fileName + severityName[log.severity],
-		MaxSize:    logCfg.maxSize * mb,
-		MaxBackups: logCfg.maxBackups,
-		MaxAge:     logCfg.maxAge,
-		Compress:   logCfg.compress,
+		Filename:   logCfg.LogDir + "/" + logCfg.FileName + severityName[log.severity],
+		MaxSize:    logCfg.MaxSize * mb,
+		MaxBackups: logCfg.MaxBackups,
+		MaxAge:     logCfg.MaxAge,
+		Compress:   logCfg.Compress,
 	}
-	writers := logCfg.writers
-	if logCfg.consoleOut {
+	writers := logCfg.Writers
+	if logCfg.Stdout {
 		writers = append(writers, os.Stdout)
 	}
-	logger.SetOutput(logCfg.localWrite, writers)
+	logger.SetOutput(logCfg.LocalWrite, writers)
 	log.Writer = logger
 }
 
@@ -188,10 +188,10 @@ func stacks(all bool) []byte {
 }
 
 func checkDir() {
-	_, err := os.Stat(logCfg.logDir)
+	_, err := os.Stat(logCfg.LogDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(logCfg.logDir, os.ModePerm)
+			err = os.MkdirAll(logCfg.LogDir, os.ModePerm)
 			if err == nil {
 				return
 			}
@@ -202,10 +202,10 @@ func checkDir() {
 
 func flushThread() {
 	time.Sleep(time.Millisecond*100)
-	if logCfg.flushInterval <= 0 {
-		logCfg.flushInterval = 30
+	if logCfg.FlushInterval <= 0 {
+		logCfg.FlushInterval = 30
 	}
-	duration := time.Duration(logCfg.flushInterval) * time.Second
+	duration := time.Duration(logCfg.FlushInterval) * time.Second
 	c := time.NewTicker(duration)
 	defer c.Stop()
 	for {
