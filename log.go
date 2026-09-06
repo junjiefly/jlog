@@ -1,173 +1,202 @@
 package jlog
 
 import (
-	"io"
+	"net"
 	"net/http"
 	"os"
-	"strings"
+	"sync/atomic"
 	"time"
 )
 
-func init() {
-	loggers = []iLog{
-		infoLog:    newLogger(infoLog),
-		warningLog: newLogger(warningLog),
-		errorLog:   newLogger(errorLog),
-		fatalLog:   newLogger(fatalLog),
-		httpLog:    newLogger(httpLog),
-	}
-}
-
 func InitWithDefaultConfig() error {
-	logCfg = Config{
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+	atomic.StoreInt32(&shuttingDown, 1)
+
+	cfg := normalizeConfig(Config{
 		LogDir:        "log",
 		FlushInterval: 5,
 		FileName:      program,
-		LogLevel:      0,
+		Level:         InfoLevel,
 		MaxSize:       100,
 		MaxBackups:    10,
 		MaxAge:        0,
 		Compress:      true,
-		Stdout:    false,
+		Stdout:        false,
 		LocalWrite:    true,
-	}
-	return nil
+	})
+	cfgMu.Lock()
+	logCfg = cfg
+	cfgMu.Unlock()
+	atomic.StoreInt32(&currentLevel, int32(cfg.Level))
+	closeErr := closeLoggers()
+	restartFlushThread(cfg.FlushInterval)
+	atomic.StoreInt32(&shuttingDown, 0)
+	return closeErr
 }
 
+func InitWithConfig(cfg Config) error {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+	atomic.StoreInt32(&shuttingDown, 1)
 
-func InitWithConfig(cfg Config)  {
-	logCfg = Config{
-		LogDir:        cfg.LogDir,
-		FlushInterval: cfg.FlushInterval,
-		FileName:      cfg.FileName,
-		LogLevel:      cfg.LogLevel,
-		MaxSize:       cfg.MaxSize,
-		MaxBackups:    cfg.MaxBackups,
-		MaxAge:        cfg.MaxAge,
-		Compress:      cfg.Compress,
-		Stdout:    cfg.Stdout,
-		LocalWrite:    cfg.LocalWrite,
-	}
-	go func() {
-		flushThread()
-	}()
-	return
+	cfg = normalizeConfig(cfg)
+	cfgMu.Lock()
+	logCfg = cfg
+	cfgMu.Unlock()
+	atomic.StoreInt32(&currentLevel, int32(cfg.Level))
+	err := closeLoggers()
+	restartFlushThread(cfg.FlushInterval)
+	atomic.StoreInt32(&shuttingDown, 0)
+	return err
 }
 
-func V(level int64) decision {
-	if level > logCfg.LogLevel {
-		return false
-	}
-	return true
+// SetLevel sets the minimum record level that is written.
+func SetLevel(level Level) {
+	level = clampLevel(level)
+	atomic.StoreInt32(&currentLevel, int32(level))
 }
 
-func (d decision) Infoln(args ...interface{}) {
-	if d {
-		loggers[infoLog].println(args...)
+func clampLevel(level Level) Level {
+	if level < DebugLevel {
+		return DebugLevel
 	}
+	if level > ErrorLevel {
+		return ErrorLevel
+	}
+	return level
 }
 
-func (d decision) Infof(format string, args ...interface{}) {
-	if d {
-		loggers[infoLog].printf(format, args...)
-	}
-}
-func (d decision) Warningln(args ...interface{}) {
-	if d {
-		loggers[warningLog].println(args...)
-	}
+func enabled(l Level) bool {
+	return int32(l) >= atomic.LoadInt32(&currentLevel)
 }
 
-func (d decision) Warningf(format string, args ...interface{}) {
-	if d {
-		loggers[warningLog].printf(format, args...)
+// closeLoggers forces lazily created logs to use the configuration that was
+// just installed. Existing handles are flushed before they are dropped.
+func closeLoggers() error {
+	customLogMu.Lock()
+	defer customLogMu.Unlock()
+
+	var firstErr error
+	for k := range loggers {
+		firstErr = firstError(firstErr, loggers[k].close())
 	}
+	for _, customLog := range customLogs {
+		firstErr = firstError(firstErr, customLog.logger.close())
+	}
+	return firstErr
 }
 
-func (d decision) Errorln(args ...interface{}) {
-	if d {
-		loggers[errorLog].println(args...)
-	}
-}
-
-func (d decision) Errorf(format string, args ...interface{}) {
-	if d {
-		loggers[errorLog].printf(format, args...)
+func Debugln(args ...interface{}) {
+	if enabled(DebugLevel) {
+		loggers[appLog].println(DebugLevel, args...)
 	}
 }
 
-func newLogEntry(loglevel severity) *entry {
+func Debugf(format string, args ...interface{}) {
+	if enabled(DebugLevel) {
+		loggers[appLog].printf(DebugLevel, format, args...)
+	}
+}
+
+func Infoln(args ...interface{}) {
+	if enabled(InfoLevel) {
+		loggers[appLog].println(InfoLevel, args...)
+	}
+}
+
+func Infof(format string, args ...interface{}) {
+	if enabled(InfoLevel) {
+		loggers[appLog].printf(InfoLevel, format, args...)
+	}
+}
+
+func Warnln(args ...interface{}) {
+	if enabled(WarnLevel) {
+		loggers[appLog].println(WarnLevel, args...)
+	}
+}
+
+func Warnf(format string, args ...interface{}) {
+	if enabled(WarnLevel) {
+		loggers[appLog].printf(WarnLevel, format, args...)
+	}
+}
+
+func Errorln(args ...interface{}) {
+	if enabled(ErrorLevel) {
+		loggers[appLog].println(ErrorLevel, args...)
+	}
+}
+
+func Errorf(format string, args ...interface{}) {
+	if enabled(ErrorLevel) {
+		loggers[appLog].printf(ErrorLevel, format, args...)
+	}
+}
+
+func Debug() *entry {
+	if !enabled(DebugLevel) {
+		return nil
+	}
+	return newLogEntry(DebugLevel)
+}
+
+func Info() *entry {
+	if !enabled(InfoLevel) {
+		return nil
+	}
+	return newLogEntry(InfoLevel)
+}
+
+func Warn() *entry {
+	if !enabled(WarnLevel) {
+		return nil
+	}
+	return newLogEntry(WarnLevel)
+}
+
+func Error() *entry {
+	if !enabled(ErrorLevel) {
+		return nil
+	}
+	return newLogEntry(ErrorLevel)
+}
+
+func newLogEntry(l Level) *entry {
 	e := newEntry()
-	e.s = loglevel
+	e.logger = &loggers[appLog]
 	e.buf = newBuffer()
 	e.buf.writeByte('{')
 	e = e.time(time.Now())
-	if loglevel != httpLog {
-		e = e.level(severityType[loglevel])
-	}
+	e = e.level(levelName[l])
+	e.baseReserved = true
 	return e
-}
-
-func newLogEntryWithTime(loglevel severity, t time.Time) *entry {
-	e := newEntry()
-	e.s = loglevel
-	e.buf = newBuffer()
-	e.buf.writeByte('{')
-	e = e.time(t)
-	if loglevel != httpLog {
-		e = e.level(severityType[loglevel])
-	}
-	return e
-}
-
-func (d decision) Warnings() *entry {
-	if d {
-		return newLogEntry(warningLog)
-	}
-	return nil
-}
-
-func (d decision) Infos() *entry {
-	if d {
-		return newLogEntry(infoLog)
-	}
-	return nil
-}
-
-func Infos() *entry {
-	return newLogEntry(infoLog)
-}
-
-func (d decision) Errors() *entry {
-	if d {
-		return newLogEntry(errorLog)
-	}
-	return nil
 }
 
 func Fatalln(args ...interface{}) {
-	loggers[fatalLog].println(args...)
+	loggers[appLog].fatalPrintln(args...)
 	trace := stacks(true)
-	loggers[fatalLog].write(trace)
-	loggers[fatalLog].flush()
+	loggers[appLog].outputLine(trace)
+	loggers[appLog].flush()
 	Shutdown()
 	os.Exit(255)
 }
 
 func Fatalf(format string, args ...interface{}) {
-	loggers[fatalLog].printf(format, args...)
+	loggers[appLog].fatalPrintf(format, args...)
 	trace := stacks(true)
-	loggers[fatalLog].write(trace)
-	loggers[fatalLog].flush()
+	loggers[appLog].outputLine(trace)
+	loggers[appLog].flush()
 	Shutdown()
 	os.Exit(255)
 }
 
 func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spitTime string, size int64, errMsg error) {
-	remoteAddr := r.RemoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx >= 0 {
-		remoteAddr = remoteAddr[:idx]
+	if r == nil {
+		return
 	}
+	remoteAddr := remoteHost(r)
 	now := timeNow()
 	cost := (now.UnixNano() - startTime) / 1e6
 	fb := newBuffer()
@@ -175,64 +204,64 @@ func Http(r *http.Request, reqId, host string, startTime int64, retCode int, spi
 	fb.writeTime(now)
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(remoteAddr))
+	writeTextField(fb, remoteAddr)
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(host))
+	writeTextField(fb, host)
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(reqId))
+	writeTextField(fb, reqId)
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(r.Method))
+	writeTextField(fb, r.Method)
 	fb.writeByte(space)
 
-	someDigits(fb, retCode)
+	someDigits(fb, int64(retCode))
 	fb.writeByte(space)
 
-	someDigits(fb, int(size))
+	someDigits(fb, size)
 	fb.writeByte(space)
 
-	someDigits(fb, int(cost))
+	someDigits(fb, cost)
 	fb.Write(str2bytes("ms"))
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(r.RequestURI))
+	writeTextField(fb, r.RequestURI)
 	fb.writeByte(space)
 
 	if spitTime == "" {
 		fb.writeByte(split)
 	} else {
-		fb.Write(str2bytes(spitTime))
+		writeTextField(fb, spitTime)
 	}
 	fb.writeByte(space)
 
 	if errMsg == nil {
 		fb.writeByte(split)
 	} else {
-		fb.Write(str2bytes(errMsg.Error()))
+		writeTextField(fb, errMsg.Error())
 	}
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(r.Proto))
+	writeTextField(fb, r.Proto)
 	fb.writeByte(space)
 
-	fb.Write(str2bytes(r.UserAgent()))
+	writeTextField(fb, r.UserAgent())
 	fb.writeByte(space)
 
 	fb.writeByte(lineBreak)
-	loggers[httpLog].output(fb.bytes())
+	httpLog.logger.output(fb.bytes())
 	freeBuffer(fb)
 }
 
 func Https(r *http.Request, reqId, host string, startTime int64, retCode int, spitTime string, size int64, errMsg error) {
-	remoteAddr := r.RemoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx >= 0 {
-		remoteAddr = remoteAddr[:idx]
+	if r == nil {
+		return
 	}
+	remoteAddr := remoteHost(r)
 	now := timeNow()
 	cost := (now.UnixNano() - startTime) / 1e6
-	e := newLogEntryWithTime(httpLog, now)
+	e := httpLog.Event()
 
 	e = e.Str("remote", remoteAddr).Str("host", host).ReqId(reqId).Str("method", r.Method).Int("status", retCode)
 	e = e.Int64("size", size).Int64("cost", cost).Str("uri", r.RequestURI)
@@ -244,36 +273,56 @@ func Https(r *http.Request, reqId, host string, startTime int64, retCode int, sp
 	}
 }
 
+func remoteHost(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 func TimeFormat(format string) {
 	timeFormat(format)
 }
 
-func SetLogLevel(level int) {
-	old := logCfg.LogLevel
-	if level < 0 {
-		logCfg.LogLevel = 0
-	} else if level > 4 {
-		logCfg.LogLevel = 4
-	} else {
-		logCfg.LogLevel = int64(level)
-	}
-	V(logCfg.LogLevel).Infoln("log level changes from", old, "to", logCfg.LogLevel)
-}
+func Flush() error {
+	customLogMu.RLock()
+	logs := make([]*CustomLog, len(customLogs))
+	copy(logs, customLogs)
+	customLogMu.RUnlock()
 
-func SetOutout(writers ...io.Writer) {
-	logCfg.Writers = writers
-}
-
-func Flush() {
+	var firstErr error
 	for k := range loggers {
-		loggers[k].flush()
+		firstErr = firstError(firstErr, loggers[k].flush())
 	}
+	for _, customLog := range logs {
+		firstErr = firstError(firstErr, customLog.logger.flush())
+	}
+	return firstErr
 }
 
-func Shutdown() {
-	V(logCfg.LogLevel).Infoln("shutting down ...")
+func Shutdown() error {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+	atomic.StoreInt32(&shuttingDown, 1)
+
+	stopFlushThread()
+	customLogMu.RLock()
+	logs := make([]*CustomLog, len(customLogs))
+	copy(logs, customLogs)
+	customLogMu.RUnlock()
+
+	var firstErr error
 	for k := range loggers {
-		loggers[k].flush()
-		loggers[k].close()
+		firstErr = firstError(firstErr, loggers[k].flush())
+		firstErr = firstError(firstErr, loggers[k].close())
 	}
+	for _, customLog := range logs {
+		firstErr = firstError(firstErr, customLog.logger.flush())
+		firstErr = firstError(firstErr, customLog.logger.close())
+	}
+	return firstErr
 }
