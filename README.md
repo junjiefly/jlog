@@ -190,9 +190,8 @@ timezone suffix.
 On Linux/amd64 with an Intel Xeon E312xx, a previous jlog benchmark reported:
 
 ```
-BenchmarkJlog-2      280686    4041 ns/op    301 B/op     4 allocs/op
-BenchmarkJlogJson-2  317008    3773 ns/op      0 B/op     0 allocs/op
-BenchmarkZapJson-2    65380   18758 ns/op   2788 B/op    10 allocs/op
+BenchmarkJlog      280686    4041 ns/op    301 B/op     4 allocs/op
+BenchmarkJlogJson  317008    3773 ns/op      0 B/op     0 allocs/op
 ```
 
 The benchmark did not include rotation or compression costs.
