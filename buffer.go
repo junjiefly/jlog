@@ -44,6 +44,7 @@ func freeEntry(e *entry) {
 	}
 	e.reserved = nil
 	e.baseReserved = false
+	e.omitAutoTime = false
 	entryPool.Put(e)
 	atomic.AddInt64(&entryTotal, -1)
 }
@@ -221,6 +222,14 @@ func (fb *buffer) writeJSONString(s string) {
 }
 
 func (fb *buffer) writeJSONKey(key string) {
+	if fb.roff > 1 {
+		fb.writeByte(',')
+	}
+	fb.writeJSONString(key)
+	fb.writeByte(':')
+}
+
+func (fb *buffer) writeJSONKeyComma(key string) {
 	fb.writeByte(',')
 	fb.writeJSONString(key)
 	fb.writeByte(':')

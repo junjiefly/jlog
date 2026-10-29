@@ -163,6 +163,29 @@ The output path is `<LogDir>/<FileName>.<Name><FileSuffix>`, for example
 directory, rotation, compression, flush interval, stdout, external writers, and
 local file output.
 
+If a custom log owns its destination policy, set `WriterFactory`. This is useful
+for custom file names, hourly directories, or non-lumberjack rotation:
+
+```go
+audit, err := jlog.RegisterCustomLog(jlog.CustomLogConfig{
+    Name:       "audit",
+    FileSuffix: ".jsonl",
+    OmitTime:   true,
+    WriterFactory: func() (jlog.CustomWriter, error) {
+        return NewHourlyNumberedWriter("/data/logs/audit")
+    },
+})
+```
+
+`CustomWriter` only requires `Write`, `Flush`, and `Close`. When
+`WriterFactory` is present, jlog uses it instead of the global `LogDir` and
+lumberjack rotation settings. The factory is called lazily and again after a
+re-init if the previous writer was closed. If the factory fails, the next
+record calls it again.
+
+Set `OmitTime` to omit the automatic top-level `time` field. This is useful when
+the record already has a domain-specific timestamp such as `request_time`.
+
 `Fields` are written to every record after `time` and before event fields. Keys
 are sorted once during registration. Supported fixed-field values are `nil`,
 `string`, `[]byte`, `bool`, signed and unsigned integers, and `float32` or

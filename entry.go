@@ -11,6 +11,7 @@ type entry struct {
 	buf          *buffer
 	reserved     map[string]struct{}
 	baseReserved bool
+	omitAutoTime bool
 }
 
 // minFieldHeadroom keeps slack for the closing part of a JSON record so an
@@ -27,8 +28,10 @@ func (e *entry) canAppendKey(key string) bool {
 	}
 	if e.baseReserved {
 		switch key {
-		case "time", "msg", "level":
+		case "msg", "level":
 			return false
+		case "time":
+			return e.omitAutoTime
 		}
 	}
 	if e.reserved == nil {
@@ -49,7 +52,7 @@ func (e *entry) Msg(msg string) {
 		e.buf.roff = 1
 		e.buf.writeByte('}')
 	case e.buf.remaining() >= 11:
-		e.buf.Write(str2bytes(`,"msg":`))
+		e.buf.writeJSONKey("msg")
 		e.buf.writeJSONString(msg)
 		e.buf.writeByte('}')
 	case e.buf.remaining() >= 1:

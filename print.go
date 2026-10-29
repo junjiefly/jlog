@@ -23,8 +23,9 @@ type syncWriter interface {
 }
 
 type iLog struct {
-	kind       logKind
-	fileSuffix string
+	kind          logKind
+	fileSuffix    string
+	writerFactory func() (CustomWriter, error)
 	sync.RWMutex
 	Writer syncWriter
 }
@@ -144,10 +145,69 @@ func (w *fileWriter) SetOutput(localWrite bool, writers []io.Writer) {
 	w.logger.SetOutput(localWrite, writers)
 }
 
+type customWriterAdapter struct {
+	writer CustomWriter
+}
+
+func (w *customWriterAdapter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	if err == nil && n != len(p) {
+		return n, io.ErrShortWrite
+	}
+	return n, err
+}
+
+func (w *customWriterAdapter) Flush() error {
+	return w.writer.Flush()
+}
+
+func (w *customWriterAdapter) Close() error {
+	return w.writer.Close()
+}
+
+func (w *customWriterAdapter) SetOutput(localWrite bool, writers []io.Writer) {
+	// A custom writer owns its destination configuration.
+}
+
+type failedCustomWriter struct {
+	err error
+}
+
+func (w *failedCustomWriter) Write(p []byte) (int, error) {
+	return 0, w.err
+}
+
+func (w *failedCustomWriter) Flush() error {
+	return w.err
+}
+
+func (w *failedCustomWriter) Close() error {
+	return w.err
+}
+
+func (w *failedCustomWriter) SetOutput(localWrite bool, writers []io.Writer) {
+}
+
 func (log *iLog) create() {
 	cfgMu.RLock()
 	cfg := logCfg
 	cfgMu.RUnlock()
+
+	if log.writerFactory != nil {
+		writer, err := log.writerFactory()
+		if err != nil {
+			log.Writer = &failedCustomWriter{err: err}
+			return
+		}
+		if writer == nil {
+			log.Writer = &failedCustomWriter{
+				err: fmt.Errorf("jlog: custom log writer factory returned nil writer"),
+			}
+			return
+		}
+		log.Writer = &customWriterAdapter{writer: writer}
+		return
+	}
 
 	fileSuffix := log.fileSuffix
 	if fileSuffix == "" {
@@ -184,11 +244,15 @@ func (log *iLog) create() {
 }
 
 func (log *iLog) write(p []byte) (n int, err error) {
-	n, err = log.Writer.Write(p)
+	writer := log.Writer
+	n, err = writer.Write(p)
 	if err != nil {
+		if _, failed := writer.(*failedCustomWriter); failed {
+			log.Writer = nil
+		}
 		fmt.Fprintf(os.Stderr, "Warning: log can't be done because of error: %s\n", err)
 		// output() already holds log's lock; flush() would re-lock and deadlock.
-		_ = log.Writer.Flush()
+		_ = writer.Flush()
 	}
 	return
 }
@@ -307,6 +371,12 @@ func (log *iLog) outputLocked(buf []byte) {
 		log.create()
 	}
 	_, _ = log.write(buf)
+	if log.Writer == nil && log.writerFactory != nil {
+		// The factory failed for this record. Try once more before dropping
+		// the buffered event.
+		log.create()
+		_, _ = log.write(buf)
+	}
 }
 
 func (log *iLog) fatalPrintln(args ...interface{}) {

@@ -357,6 +357,129 @@ func TestCustomLogFieldsCannotBeOverridden(t *testing.T) {
 	}
 }
 
+func TestCustomLogOmitTime(t *testing.T) {
+	oldLogs, oldNames, oldFiles := saveCustomLogs()
+	defer restoreCustomLogs(t, oldLogs, oldNames, oldFiles)
+
+	customLog, err := RegisterCustomLog(CustomLogConfig{
+		Name:       "request",
+		FileSuffix: ".jsonl",
+		OmitTime:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &memWriter{}
+	customLog.logger.Writer = w
+
+	customLog.Event().
+		Time("request_time", time.Unix(1234567890, 0).UTC()).
+		Str("action", "get").
+		Msg("")
+
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(w.String()), &m); err != nil {
+		t.Fatalf("invalid JSON %q: %v", w.String(), err)
+	}
+	if _, hasTime := m["time"]; hasTime {
+		t.Fatalf("automatic time should be omitted: %#v", m)
+	}
+	if m["request_time"] != "2009-02-13T23:31:30.000" {
+		t.Fatalf("request_time mismatch: %#v", m)
+	}
+}
+
+func TestCustomLogOmitTimeWithFixedFields(t *testing.T) {
+	oldLogs, oldNames, oldFiles := saveCustomLogs()
+	defer restoreCustomLogs(t, oldLogs, oldNames, oldFiles)
+
+	customLog, err := RegisterCustomLog(CustomLogConfig{
+		Name:       "request-fixed",
+		FileSuffix: ".jsonl",
+		OmitTime:   true,
+		Fields: map[string]interface{}{
+			"service": "gateway",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &memWriter{}
+	customLog.logger.Writer = w
+
+	customLog.Event().Str("action", "get").Msg("")
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(w.String()), &m); err != nil {
+		t.Fatalf("invalid JSON %q: %v", w.String(), err)
+	}
+	if m["service"] != "gateway" || m["action"] != "get" {
+		t.Fatalf("fields mismatch: %#v", m)
+	}
+	if _, hasTime := m["time"]; hasTime {
+		t.Fatalf("automatic time should be omitted: %#v", m)
+	}
+}
+
+func TestCustomLogWriterFactory(t *testing.T) {
+	oldLogs, oldNames, oldFiles := saveCustomLogs()
+	defer restoreCustomLogs(t, oldLogs, oldNames, oldFiles)
+
+	w := &memWriter{}
+	customLog, err := RegisterCustomLog(CustomLogConfig{
+		Name:       "writer",
+		FileSuffix: ".jsonl",
+		WriterFactory: func() (CustomWriter, error) {
+			return w, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	customLog.logger.create()
+	adapter, ok := customLog.logger.Writer.(*customWriterAdapter)
+	if !ok {
+		t.Fatalf("writer type = %T, want *customWriterAdapter", customLog.logger.Writer)
+	}
+	if adapter.writer != CustomWriter(w) {
+		t.Fatal("custom writer was not installed")
+	}
+
+	customLog.Event().Str("action", "ship").Msg("")
+	if !strings.Contains(w.String(), `"action":"ship"`) {
+		t.Fatalf("custom writer did not receive event: %q", w.String())
+	}
+}
+
+func TestCustomLogWriterFactoryRetriesAfterFailure(t *testing.T) {
+	oldLogs, oldNames, oldFiles := saveCustomLogs()
+	defer restoreCustomLogs(t, oldLogs, oldNames, oldFiles)
+
+	var calls int32
+	w := &memWriter{}
+	customLog, err := RegisterCustomLog(CustomLogConfig{
+		Name:       "retrying-writer",
+		FileSuffix: ".jsonl",
+		WriterFactory: func() (CustomWriter, error) {
+			if atomic.AddInt32(&calls, 1) == 1 {
+				return nil, errors.New("temporary writer failure")
+			}
+			return w, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	customLog.Event().Str("action", "retry").Msg("")
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("factory calls=%d, want 2", got)
+	}
+	if !strings.Contains(w.String(), `"action":"retry"`) {
+		t.Fatalf("retry did not write event: %q", w.String())
+	}
+}
+
 func TestCustomLongTimeFormatRemainsValidJSON(t *testing.T) {
 	oldLogs, oldNames, oldFiles := saveCustomLogs()
 	defer restoreCustomLogs(t, oldLogs, oldNames, oldFiles)

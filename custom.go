@@ -2,6 +2,7 @@ package jlog
 
 import (
 	"errors"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -19,6 +20,24 @@ type CustomLogConfig struct {
 	// registration. Supported values are nil, string, []byte, bool, signed
 	// and unsigned integers, and float32/float64.
 	Fields map[string]interface{}
+
+	// OmitTime disables the automatic top-level "time" field. Callers can
+	// still add their own time field, for example request_time.
+	OmitTime bool
+
+	// WriterFactory creates the destination for this custom log. When set,
+	// it takes precedence over the global jlog LogDir and rotation config.
+	// The factory is called lazily and again after a re-init if the writer
+	// was closed by lifecycle handling.
+	WriterFactory func() (CustomWriter, error)
+}
+
+// CustomWriter is a destination that owns its own persistence policy, such as
+// custom file naming, rotation, or directory layout.
+type CustomWriter interface {
+	io.Writer
+	Flush() error
+	Close() error
 }
 
 // CustomLog is a separate rotating destination for structured records. Create
@@ -28,6 +47,7 @@ type CustomLog struct {
 	fileSuffix string
 	fields     []byte
 	fixedKeys  map[string]struct{}
+	omitTime   bool
 	logger     iLog
 }
 
@@ -84,6 +104,8 @@ func RegisterCustomLog(cfg CustomLogConfig) (*CustomLog, error) {
 	fileSuffix := "." + cfg.Name + cfg.FileSuffix
 	s := newCustomLog(cfg.Name, fileSuffix, fields)
 	s.fixedKeys = fixedKeys
+	s.omitTime = cfg.OmitTime
+	s.logger.writerFactory = cfg.WriterFactory
 
 	customLogMu.Lock()
 	defer customLogMu.Unlock()
@@ -111,9 +133,17 @@ func (s *CustomLog) Event() *entry {
 	e.reserved = s.fixedKeys
 	e.baseReserved = true
 	e.buf.writeByte('{')
-	e = e.time(timeNow())
+	if s.omitTime {
+		e.omitAutoTime = true
+	} else {
+		e = e.time(timeNow())
+	}
 	if len(s.fields) > 0 && e.buf.remaining() >= len(s.fields)+jsonStrHeadroom {
-		e.buf.Write(s.fields)
+		if s.omitTime && e.buf.roff <= 1 && s.fields[0] == ',' {
+			e.buf.Write(s.fields[1:])
+		} else {
+			e.buf.Write(s.fields)
+		}
 	}
 	return e
 }
@@ -174,7 +204,7 @@ func encodeFixedFields(fields map[string]interface{}) ([]byte, error) {
 		if fb.remaining() < minFieldHeadroom {
 			return nil, errors.New("jlog: fixed fields are too large")
 		}
-		fb.writeJSONKey(key)
+		fb.writeJSONKeyComma(key)
 		if err := writeFixedFieldValue(fb, fields[key]); err != nil {
 			return nil, err
 		}
